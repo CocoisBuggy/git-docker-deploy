@@ -161,10 +161,10 @@ def has_docker_spec(directory):
 
 
 def service_is_running(client: docker.DockerClient, name: str):
-    for service in client.services.list():
-        service = client.services.get(service.id)
+    for container in client.containers.list():
+        container = client.containers.get(container.id)
 
-        if service.name == name:
+        if container.name == name:
             return True
 
     return False
@@ -214,13 +214,11 @@ def manage_docker_deploy(
             break
 
     if not any_services_running and not deploy_all:
-        print("\t🐳 No services running already running, and deploy_all is false")
+        print("\t🐳 No services running already running, and deploy_all is not set")
         return
 
     if not any_services_running and deploy_all:
-        print(
-            "\t🐳 No services running, but deploy_all is true, so deploying all services"
-        )
+        print("\t🐳 No services running, but deploy_all is set, so we will deploy")
 
         force_rebuild = True
         force_restart = True
