@@ -15,6 +15,8 @@ import argparse
 import os
 import subprocess
 from git import Repo
+import docker
+import yaml
 
 # Create the parser
 parser = argparse.ArgumentParser(description="Update git repos and deploy via docker")
@@ -39,6 +41,24 @@ parser.add_argument(
     "-r",
     action="store_true",
     help="recurse into the directory and update all git repos in the directory",
+)
+
+parser.add_argument(
+    "--deploy-all",
+    action="store_true",
+    help="Deploy all docker compose services, even if they aren't running when the script is started",
+)
+
+parser.add_argument(
+    "--force-rebuild",
+    action="store_true",
+    help="Rebuild the docker compose services even if there are no new commits",
+)
+
+parser.add_argument(
+    "--force-restart",
+    action="store_true",
+    help="Restart the compose services even if there are no new commits",
 )
 
 
@@ -77,7 +97,7 @@ def get_remote_commits(repo: Repo):
     return remote_commits
 
 
-def update_git(directory, skip_pull=False):
+def update_git(directory: str, skip_pull: bool):
     repo: Repo = Repo(directory)
     local_commit = repo.head.commit
     local_commit_msg = local_commit.message.strip().split("\n")[0]
@@ -99,7 +119,10 @@ def update_git(directory, skip_pull=False):
 
     if not skip_pull and len(remote_commits) > 0:
         repo.remotes.origin.pull()
+        print("\t🎉 Git pull completed!")
         return True
+
+    print("\t🦘 Git repo had no state change!")
     return False
 
 
@@ -137,47 +160,119 @@ def has_docker_spec(directory):
     return os.path.isfile(os.path.join(directory, "docker-compose.yml"))
 
 
-def process_dir(directory, skip_deploy=False, skip_pull=False):
-    try:
-        print("\n")
-        did_update = update_git(directory, skip_pull=skip_pull)
+def service_is_running(client: docker.DockerClient, name: str):
+    for service in client.services.list():
+        service = client.services.get(service.id)
 
-        print("\t🎉 Git updated")
+        if service.name == name:
+            return True
+
+    return False
+
+
+def read_docker_compose_file(directory):
+    # Define the path to the docker-compose.yml file
+    docker_compose_file = f"{directory}/docker-compose.yml"
+
+    # Open and read the docker-compose.yml file
+    with open(docker_compose_file, "r") as file:
+        docker_compose = yaml.safe_load(file)
+
+    return docker_compose
+
+
+def manage_docker_deploy(
+    directory: str,
+    did_update: bool,
+    force_restart=False,
+    force_rebuild=False,
+    deploy_all=False,
+):
+    if not system_has_docker():
+        print("\t🚨 Docker not available, skipping")
+        return
+
+    if not has_docker_spec(directory):
+        print("\t🚨 No docker-compose.yml, skipping")
+        return
+
+    if not can_execute_docker_compose():
+        print("\t🚨 Docker needs sudo, this script won't work")
+        return
+
+    # We need to check if the services described in the docker-compose.yml
+    # are running, and if they aren't running, we need to skip starting them
+    # by default. Only if the user has specified deploy-all do we start them
+    client = docker.from_env()
+    config = read_docker_compose_file(directory)
+    any_services_running = False
+
+    for service in config["services"]:
+        print(f"\t🐳 Checking service {service}...")
+        if service_is_running(client, service):
+            any_services_running = True
+            break
+
+    if not any_services_running and not deploy_all:
+        print("\t🐳 No services running already running, and deploy_all is false")
+        return
+
+    if not any_services_running and deploy_all:
+        print(
+            "\t🐳 No services running, but deploy_all is true, so deploying all services"
+        )
+
+        force_rebuild = True
+        force_restart = True
+
+    if did_update or force_rebuild:
+        print(f"\t🐳 Rebuilding docker images for {directory}...")
+        subprocess.run(
+            [*which_docker_compose(), "build"],
+            cwd=directory,
+        )
+
+    if did_update or force_restart:
+        print("\t🐳 Stopping docker services...")
+        subprocess.run(
+            [*which_docker_compose(), "down"],
+            cwd=directory,
+        )
+
+        print(f"\t🐳 Re-running docker compose for {directory}...")
+        subprocess.run(
+            [*which_docker_compose(), "up", "-d"],
+            cwd=directory,
+        )
+    else:
+        print(f"\t🐳 No repo state change, docker left untouched")
+
+
+def process_dir(
+    directory: str,
+    skip_deploy: bool = False,
+    skip_pull: bool = False,
+    **kwargs,
+):
+    try:
+        did_update = update_git(
+            directory,
+            skip_pull,
+        )
 
         if not skip_deploy:
-            if not system_has_docker():
-                print("\t🚨 Docker not available, skipping")
-                return
+            manage_docker_deploy(directory, did_update, **kwargs)
 
-            if not has_docker_spec(directory):
-                print("\t🚨 No docker-compose.yml, skipping")
-                return
-
-            if not can_execute_docker_compose():
-                print("\t🚨 Docker needs sudo, this script won't work")
-                return
-
-            if did_update:
-                print(f"\t🐳 Rebuilding docker images for {directory}")
-                subprocess.run(
-                    [*which_docker_compose(), "build"],
-                    cwd=directory,
-                )
-
-            print(f"\t🐳 Re-running docker compose for {directory}")
-            # I want to wait for docker compose to finish before continuing,
-            # but we need to run with the -d flag so that it keeps running in
-            # the background.
-            subprocess.run(
-                [*which_docker_compose(), "up", "-d"],
-                cwd=directory,
-            )
     except Exception as e:
         print(f"\t🚨 Error updating {directory}: {e}")
 
 
-def update_git_and_docker(directory, skip_deploy=False, skip_pull=False):
-    if not skip_deploy:
+def update_git_and_docker(
+    directory: str = os.getcwd(),
+    recurse=False,
+    **kwargs,
+):
+    if not kwargs.get("skip_deploy", False):
         if not system_has_docker():
             print("🚨 Docker not available")
             return
@@ -193,19 +288,16 @@ def update_git_and_docker(directory, skip_deploy=False, skip_pull=False):
 
         # If the item is a directory and a Git repository
         if is_valid_repo(item_path):
-            process_dir(
-                item_path,
-                skip_deploy=skip_deploy,
-                skip_pull=skip_pull,
-            )
+            # Valid repo, so we can enter the processing immediately
+            process_dir(item_path, **kwargs)
         else:
-            if os.path.isdir(item_path):
+            if os.path.isdir(item_path) and recurse:
                 print(f"📁 {item_path} is a directory, trying recurse")
                 # Recurse into the directory
                 update_git_and_docker(
-                    item_path,
-                    skip_deploy=skip_deploy,
-                    skip_pull=skip_pull,
+                    directory=item_path,
+                    recurse=recurse,
+                    **kwargs,
                 )
 
 
@@ -213,8 +305,4 @@ def update_git_and_docker(directory, skip_deploy=False, skip_pull=False):
 args = parser.parse_args()
 
 # Run the actual script
-update_git_and_docker(
-    args.directory,
-    skip_deploy=args.skip_deploy,
-    skip_pull=args.skip_pull,
-)
+update_git_and_docker(**vars(args))
