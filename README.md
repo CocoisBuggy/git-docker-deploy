@@ -63,7 +63,7 @@ add it to your system's PATH. Here's how you can do it:
 1. Move the script to a directory that's already in your PATH. A common choice is `/usr/local/bin` or `~/bin`. You can do this with the `mv` command. For example, if your script is named `myscript.py`, you can use the following command:
 
 ```bash
-cp main.py /usr/local/bin/quick-deploy
+cp ./ /usr/local/bin/quick-deploy
 ```
 
 2. Make the script executable. You can do this with the `chmod` command. For example:
@@ -90,7 +90,7 @@ The tool is used via the command line. Navigate to the directory where the scrip
 ### Basic Command
 
 ```bash
-python update_git_and_docker.py -d /path/to/directory
+python ./ -d /path/to/directory
 ```
 
 
@@ -113,7 +113,7 @@ python update_git_and_docker.py -d /path/to/directory --skip-pull
 - **Recurse Into Subdirectories**:
 
 ```bash
-python main.py -d /path/to/directory --recurse
+python ./ -d /path/to/directory --recurse
 ```
 
 
