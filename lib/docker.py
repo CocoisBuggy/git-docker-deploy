@@ -53,8 +53,6 @@ def has_docker_spec(directory):
 
 
 def service_is_running(client: docker.DockerClient, name: str):
-    log.debug(f"\t\t🐳 Checking container {name}... ")
-    
     for container in client.containers.list():
         container = client.containers.get(container.id)
         log.debug(f"\t\t🐳 {name} -  {container.name}")
