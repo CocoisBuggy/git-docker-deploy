@@ -121,17 +121,22 @@ def manage_docker_deploy(
     config = read_docker_compose_file(directory)
     any_services_running = False
 
-    for service in config["services"]:
-        log.debug(f"\t🐳 Checking service {service}...")
+    for service_name in config["services"]:
+        container_name = None
+        log.debug(f"\t🐳 Checking service {service_name}...")
 
         # if container_name is set, use that, otherwise use the service name
-        if "container_name" in config["services"][service]:
-            service = config["services"][service]["container_name"]
+        if "container_name" in config["services"][service_name]:
+            container_name = config["services"][service_name]["container_name"]
             log.debug(
-                f"container_name is set in this service, so we use that ({service})"
+                f"container_name is set in this service, so we use that ({service_name})"
             )
 
-        if container_is_running(client, service):
+        if container_is_running(
+            client,
+            service_name=service_name,
+            container_name=container_name,
+        ):
             any_services_running = True
             break
 
