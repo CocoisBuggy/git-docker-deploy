@@ -41,7 +41,7 @@ parser.add_argument(
 parser.add_argument(
     "--force-restart",
     action="store_true",
-    help="Restart the compose services even if there are no new commits",
+    help="Restart the compose services even if there are no new commits, but will not force deploy",
 )
 
 parser.add_argument(

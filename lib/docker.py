@@ -151,7 +151,7 @@ def manage_docker_deploy(
         force_rebuild = True
         force_restart = True
 
-    if did_update or force_rebuild:
+    if did_update or force_rebuild or deploy_all:
         log.info(f"\t🐳 Rebuilding docker images for {directory}...")
 
         subprocess.run(
@@ -159,7 +159,7 @@ def manage_docker_deploy(
             cwd=directory,
         )
 
-    if did_update or force_restart:
+    if did_update or force_restart or deploy_all:
         log.info("\t🐳 Stopping docker services...")
         subprocess.run(
             [*which_docker_compose(), "down"],
