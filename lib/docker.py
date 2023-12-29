@@ -106,11 +106,11 @@ def manage_docker_deploy(
             break
 
     if not any_services_running and not deploy_all:
-        print("\t🐳 No services running already running, and deploy_all is not set")
+        log.info("\t🐳 No services running already running, and deploy_all is not set")
         return
 
     if not any_services_running and deploy_all:
-        print("\t🐳 No services running, but deploy_all is set, so we will deploy")
+        log.info("\t🐳 No services running, but deploy_all is set, so we will deploy")
 
         force_rebuild = True
         force_restart = True
