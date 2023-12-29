@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from lib import args
 from lib.integration import update_git_and_docker
 
