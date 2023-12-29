@@ -129,7 +129,7 @@ def manage_docker_deploy(
         if "container_name" in config["services"][service_name]:
             container_name = config["services"][service_name]["container_name"]
             log.debug(
-                f"container_name is set in this service, so we use that ({service_name})"
+                f"container_name is set in this service, so we use that ({container_name})"
             )
 
         if container_is_running(
