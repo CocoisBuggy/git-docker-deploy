@@ -9,14 +9,37 @@ import os
 import subprocess
 from git import Repo
 import shutil
-
-
 import argparse
 import os
 import subprocess
-from git import Repo
 import docker
 import yaml
+import logging
+
+# Create a logger
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+
+# Create a file handler
+# The file handler can be verbose, since it's not logger.infoed to the console
+file_handler = logging.FileHandler('activity.log')
+file_handler.setLevel(logging.DEBUG)
+
+# Create a stream handler
+# The detail will be controllable via the command line arguments
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.INFO)
+
+# Create a formatter
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+# Set the formatter for the handlers
+file_handler.setFormatter(formatter)
+stream_handler.setFormatter(formatter)
+
+# Add the handlers to the logger
+log.addHandler(file_handler)
+log.addHandler(stream_handler)
 
 # Create the parser
 parser = argparse.ArgumentParser(description="Update git repos and deploy via docker")
@@ -33,7 +56,7 @@ parser.add_argument(
 parser.add_argument(
     "--skip-pull",
     action="store_true",
-    help="skip pulling new changes from git, will still print out commits that should be pulled",
+    help="skip pulling new changes from git, will still logger.info out commits that should be pulled",
 )
 
 parser.add_argument(
@@ -59,6 +82,12 @@ parser.add_argument(
     "--force-restart",
     action="store_true",
     help="Restart the compose services even if there are no new commits",
+)
+
+parser.add_argument(
+    "--verbose",
+    action="store_true",
+    help="Whether or not to logger.info out verbose logging information",
 )
 
 
@@ -102,27 +131,27 @@ def update_git(directory: str, skip_pull: bool):
     local_commit = repo.head.commit
     local_commit_msg = local_commit.message.strip().split("\n")[0]
 
-    print(f"🌳 {directory} on branch ({repo.active_branch.name})")
-    print(f"\t📝 local commit: {local_commit_msg}")
+    log.info(f"🌳 {directory} on branch ({repo.active_branch.name})")
+    log.info(f"\t📝 local commit: {local_commit_msg}")
 
     if repo.is_dirty():
-        print("\t🧹 repo is dirty, which may affect the pull")
+        log.info("\t🧹 repo is dirty, which may affect the pull")
 
     remote_commits = get_remote_commits(repo)
 
     if len(remote_commits) == 0:
-        print("\t🚏 no remote commits to pull, up to date!")
+        log.info("\t🚏 no remote commits to pull, up to date!")
 
     for commit in remote_commits:
         incomming_message = commit.message.strip().split("\n")[0]
-        print(f"\t\t🚛 incoming commit: {incomming_message}")
+        log.info(f"\t\t🚛 incoming commit: {incomming_message}")
 
     if not skip_pull and len(remote_commits) > 0:
         repo.remotes.origin.pull()
-        print("\t🎉 Git pull completed!")
+        log.info("\t🎉 Git pull completed!")
         return True
 
-    print("\t🦘 Git repo had no state change!")
+    log.info("\t🦘 Git repo had no state change!")
     return False
 
 
@@ -152,7 +181,7 @@ def can_execute_docker_compose():
     except PermissionError:
         return False
     except Exception as e:
-        print(e)
+        log.info(e)
         return False
 
 
@@ -189,15 +218,15 @@ def manage_docker_deploy(
     deploy_all=False,
 ):
     if not system_has_docker():
-        print("\t🚨 Docker not available, skipping")
+        log.warn("\t🚨 Docker not available, skipping")
         return
 
     if not has_docker_spec(directory):
-        print("\t🚨 No docker-compose.yml, skipping")
+        log.warn("\t🚨 No docker-compose.yml, skipping")
         return
 
     if not can_execute_docker_compose():
-        print("\t🚨 Docker needs sudo, this script won't work")
+        log.warn("\t🚨 Docker needs sudo, this script won't work")
         return
 
     # We need to check if the services described in the docker-compose.yml
@@ -208,17 +237,17 @@ def manage_docker_deploy(
     any_services_running = False
 
     for service in config["services"]:
-        print(f"\t🐳 Checking service {service}...")
+        log.info(f"\t🐳 Checking service {service}...")
         if service_is_running(client, service):
             any_services_running = True
             break
 
     if not any_services_running and not deploy_all:
-        print("\t🐳 No services running already running, and deploy_all is false")
+        log.info("\t🐳 No services running already running, and deploy_all is false")
         return
 
     if not any_services_running and deploy_all:
-        print(
+        log.info(
             "\t🐳 No services running, but deploy_all is true, so deploying all services"
         )
 
@@ -226,26 +255,26 @@ def manage_docker_deploy(
         force_restart = True
 
     if did_update or force_rebuild:
-        print(f"\t🐳 Rebuilding docker images for {directory}...")
+        log.info(f"\t🐳 Rebuilding docker images for {directory}...")
         subprocess.run(
             [*which_docker_compose(), "build"],
             cwd=directory,
         )
 
     if did_update or force_restart:
-        print("\t🐳 Stopping docker services...")
+        log.info("\t🐳 Stopping docker services...")
         subprocess.run(
             [*which_docker_compose(), "down"],
             cwd=directory,
         )
 
-        print(f"\t🐳 Re-running docker compose for {directory}...")
+        log.info(f"\t🐳 Re-running docker compose for {directory}...")
         subprocess.run(
             [*which_docker_compose(), "up", "-d"],
             cwd=directory,
         )
     else:
-        print(f"\t🐳 No repo state change, docker left untouched")
+        log.info(f"\t🐳 No repo state change, docker left untouched")
 
 
 def process_dir(
@@ -254,17 +283,21 @@ def process_dir(
     skip_pull: bool = False,
     **kwargs,
 ):
+    log.debug(f"processing {directory}...")
+
     try:
         did_update = update_git(
             directory,
             skip_pull,
         )
+        
 
         if not skip_deploy:
+            log.debug(f"{directory} did update and user did not set skip-deploy")
             manage_docker_deploy(directory, did_update, **kwargs)
 
     except Exception as e:
-        print(f"\t🚨 Error updating {directory}: {e}")
+        log.error(f"\t🚨 Error updating {directory}: {e}")
 
 
 def update_git_and_docker(
@@ -274,25 +307,30 @@ def update_git_and_docker(
 ):
     if not kwargs.get("skip_deploy", False):
         if not system_has_docker():
-            print("🚨 Docker not available")
-            return
+            log.error("🚨 Docker not available")
+            exit(1)
 
         if not can_execute_docker_compose():
-            print("🚨 Docker needs sudo, this script won't work")
-            print("https://docs.docker.com/engine/install/linux-postinstall/")
-            return
+            log.error("🚨 Docker needs sudo, this script won't work")
+            log.error("https://docs.docker.com/engine/install/linux-postinstall/")
+            exit(1)
+
 
     # Iterate over all items in the directory
     for item in os.listdir(directory):
         item_path = os.path.join(directory, item)
+        log.debug(f"📁 inspecting {item_path}")
 
         # If the item is a directory and a Git repository
         if is_valid_repo(item_path):
+            log.debug(f"📁 {item_path} is a valid repo")
             # Valid repo, so we can enter the processing immediately
             process_dir(item_path, **kwargs)
         else:
+            log.debug(f"{item_path} is a not a valid repo")
+            
             if os.path.isdir(item_path) and recurse:
-                print(f"📁 {item_path} is a directory, trying recurse")
+                log.info(f"📁 {item_path} is a directory, trying recurse")
                 # Recurse into the directory
                 update_git_and_docker(
                     directory=item_path,
@@ -303,6 +341,10 @@ def update_git_and_docker(
 
 # Parse the arguments
 args = parser.parse_args()
+
+if args.verbose:
+    stream_handler.setLevel(logging.DEBUG)
+    log.debug("Using verbose logging")
 
 # Run the actual script
 update_git_and_docker(**vars(args))
