@@ -137,6 +137,7 @@ def manage_docker_deploy(
             service_name=service_name,
             container_name=container_name,
         ):
+            log.debug(f"\t🐳 {service_name} is already running, so we can restart it!")
             any_services_running = True
             break
 
@@ -152,6 +153,7 @@ def manage_docker_deploy(
 
     if did_update or force_rebuild:
         log.info(f"\t🐳 Rebuilding docker images for {directory}...")
+
         subprocess.run(
             [*which_docker_compose(), "build"],
             cwd=directory,
