@@ -52,7 +52,7 @@ def has_docker_spec(directory):
     return os.path.isfile(os.path.join(directory, "docker-compose.yml"))
 
 
-def service_is_running(client: docker.DockerClient, name: str):
+def container_is_running(client: docker.DockerClient, name: str):
     for container in client.containers.list():
         container = client.containers.get(container.id)
         log.debug(f"\t\t🐳 {name} -  {container.name}")
@@ -102,7 +102,12 @@ def manage_docker_deploy(
 
     for service in config["services"]:
         log.info(f"\t🐳 Checking service {service}...")
-        if service_is_running(client, service):
+        
+        # if container_name is set, use that, otherwise use the service name
+        if "container_name" in config["services"][service]:
+            service = config["services"][service]["container_name"]
+        
+        if container_is_running(client, service):
             any_services_running = True
             break
 
