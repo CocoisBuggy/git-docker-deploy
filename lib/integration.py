@@ -17,7 +17,7 @@ def process_dir(
             directory,
             skip_pull,
         )
-        
+
         if did_update:
             log.debug(f"{directory} did_update and pull changes")
 
@@ -27,7 +27,7 @@ def process_dir(
 
     except Exception as e:
         log.error(f"\t🚨 Error updating {directory}: {e}")
-        
+
 
 def update_git_and_docker(
     directory: str = os.getcwd(),
@@ -44,7 +44,6 @@ def update_git_and_docker(
             log.error("https://docs.docker.com/engine/install/linux-postinstall/")
             exit(1)
 
-
     # Iterate over all items in the directory
     for item in os.listdir(directory):
         item_path = os.path.join(directory, item)
@@ -57,7 +56,7 @@ def update_git_and_docker(
             process_dir(item_path, **kwargs)
         else:
             log.debug(f"{item_path} is a not a valid repo")
-            
+
             if os.path.isdir(item_path) and recurse:
                 log.info(f"📁 {item_path} is a directory, trying recurse")
                 # Recurse into the directory

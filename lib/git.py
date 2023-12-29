@@ -55,4 +55,3 @@ def is_valid_repo(directory):
         return os.path.isdir(directory) and Repo(directory).git_dir
     except Exception:
         return False
-

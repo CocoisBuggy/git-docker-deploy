@@ -11,7 +11,6 @@ if args.verbose:
     stream_handler.setLevel(logging.DEBUG)
     log.setLevel(logging.DEBUG)
     log.debug("Using verbose logging")
-    
-    
-log.debug("Module fully initialized")
 
+
+log.debug("Module fully initialized")

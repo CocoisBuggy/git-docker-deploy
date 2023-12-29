@@ -1,10 +1,10 @@
-
 import os
 import shutil
 import subprocess
 import docker
 import yaml
 from .logger import log
+
 
 def which_docker_compose():
     """
@@ -21,8 +21,6 @@ def which_docker_compose():
         return ["docker", "compose"]
 
     raise Exception("Neither 'docker-compose' nor 'docker compose' is available")
-
-
 
 
 def system_has_docker():
@@ -52,13 +50,36 @@ def has_docker_spec(directory):
     return os.path.isfile(os.path.join(directory, "docker-compose.yml"))
 
 
-def container_is_running(client: docker.DockerClient, name: str):
-    for container in client.containers.list():
-        container = client.containers.get(container.id)
-        log.debug(f"\t\t🐳 {name} -  {container.name}")
-        
-        if container.name == name:
-            return True
+def container_is_running(
+    client: docker.DockerClient,
+    service_name: str = None,
+    container_name: str = None,
+):
+    contianer_names = [container.name for container in client.containers.list()]
+
+    if container_name is not None:
+        log.debug(
+            f"\t\t🐳 container_name is specified - {container_name} - which is a reliable variable"
+        )
+        return container_name in contianer_names
+
+    if service_name is None:
+        raise Exception("You must specify either service_name or container_name")
+
+    log.debug(
+        "container_name not set. this means we will need to do some guesswork to see if the service is running"
+    )
+
+    for name in contianer_names:
+        log.debug(f"\t\t🐳 comparing {service_name} - {name}")
+
+        parts = name.split("-")
+
+        if len(parts) > 1:
+            for part in parts:
+                if service_name == part:
+                    log.debug(f"\t\t🐳 {service_name} is found to be running!")
+                    return True
 
     return False
 
@@ -101,12 +122,15 @@ def manage_docker_deploy(
     any_services_running = False
 
     for service in config["services"]:
-        log.info(f"\t🐳 Checking service {service}...")
-        
+        log.debug(f"\t🐳 Checking service {service}...")
+
         # if container_name is set, use that, otherwise use the service name
         if "container_name" in config["services"][service]:
             service = config["services"][service]["container_name"]
-        
+            log.debug(
+                f"container_name is set in this service, so we use that ({service})"
+            )
+
         if container_is_running(client, service):
             any_services_running = True
             break
@@ -142,4 +166,3 @@ def manage_docker_deploy(
         )
     else:
         log.info(f"\t🐳 No repo state change, docker left untouched")
-
